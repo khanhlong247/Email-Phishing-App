@@ -1,0 +1,4 @@
+/.env
+/models/svm_email_classifier.pkl
+/models/svm_phishing_detector.pkl
+/__pycache__/

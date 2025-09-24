@@ -1,0 +1,26 @@
+{
+  "name": "phishing-detector-web",
+  "version": "1.0.0",
+  "description": "Ứng dụng web mô phỏng phát hiện phishing bằng AI cho BTL Bảo Mật Ứng dụng.",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "NODE_ENV=development node app.js",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "phishing",
+    "security",
+    "ai",
+    "express",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.12.2",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0"
+  }
+}

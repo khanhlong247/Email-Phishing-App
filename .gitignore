@@ -1,0 +1,42 @@
+# Env
+.env
+.env.*.local
+*.env
+
+# Node
+node_modules/
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+dist/
+build/
+.cache/
+.coverage/
+coverage/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.envrc
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Models/artifacts (tuỳ dự án, giữ nếu cần)
+*.pkl
+*.joblib
+
+# Misc
+*.sqlite3

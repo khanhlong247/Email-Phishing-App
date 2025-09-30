@@ -1,5 +1,11 @@
-fastapi 
-uvicorn 
-joblib 
+fastapi
+uvicorn
+joblib
 python-dotenv
 scikit-learn
+requests
+beautifulsoup4
+whois
+pandas
+xgboost
+ipaddress

@@ -9,3 +9,4 @@ whois
 pandas
 xgboost
 ipaddress
+tldextract

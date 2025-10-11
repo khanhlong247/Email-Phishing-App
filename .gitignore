@@ -1,5 +1,4 @@
 /.env
-/models/svm_email_classifier.pkl
-/models/svm_phishing_detector.pkl
-/models/xgb_phishing_url_model.json
+/models
 /__pycache__/
+/logs

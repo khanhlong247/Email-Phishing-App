@@ -87,11 +87,11 @@ if __name__ == "__main__":
         logger.error("PROTECTED_EMAIL and MAIN_MAIL_SERVER must be set in .env")
         raise ValueError("PROTECTED_EMAIL and MAIN_MAIL_SERVER must be set in .env")
     
-    logger.info(f"Starting SMTP Gateway on port 25, protecting {PROTECTED_EMAIL}")
+    logger.info(f"Starting SMTP Gateway on port 2525, protecting {PROTECTED_EMAIL}")
     controller = Controller(
         SpamFilterHandler(),
         hostname="0.0.0.0",
-        port=25
+        port=2525
     )
     controller.start()
     logger.info("SMTP Gateway is running")

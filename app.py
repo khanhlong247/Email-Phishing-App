@@ -377,14 +377,13 @@ class CustomSMTPServer:
             return '550 Forwarding failed'
 
 async def main():
-    # Start the SMTP server on localhost:2525
     controller = Controller(
         CustomSMTPServer(),
         hostname='localhost',
         port=2525
     )
     controller.start()
-    print("SMTP Proxy Server running on localhost...")
+    print("SMTP Proxy Server running on localhost:2525...")
     try:
         while True:
             await asyncio.sleep(3600)  # Keep the server running

@@ -5,3 +5,9 @@
 /test_gmail.com
 __pycache__/
 *.pyc
+/create_database.py
+/email_proxy_server.py
+/phishing_detection.py
+/send_mail.py
+/test_all_models.py
+/main.py

@@ -1,13 +1,13 @@
 import smtplib
 from email.mime.text import MIMEText
 
-msg = MIMEText("This is a test email.")
-msg['Subject'] = 'Test Email'
-msg['From'] = 'sender@gmail.com'
+msg = MIMEText("Hi, you can search your order at https://www.amazon.com")
+msg['Subject'] = 'Email from Amazon'
+msg['From'] = 'namtranhoang134@gmail.com'
 msg['To'] = 'khanhlong024@gmail.com'
 
 try:
-    with smtplib.SMTP('localhost', 2525) as server:
+    with smtplib.SMTP('192.168.1.109', 2525) as server:
         server.set_debuglevel(1)  # Enable debug output
         server.send_message(msg)
     print("Email sent to proxy server.")

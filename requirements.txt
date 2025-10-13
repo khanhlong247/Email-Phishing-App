@@ -11,3 +11,4 @@ pandas
 xgboost
 ipaddress
 tldextract
+mysql-connector-python

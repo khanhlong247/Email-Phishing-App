@@ -200,7 +200,7 @@ def predict_url(url: str):
     try:
         feats = extract_url_features(url)
         score = float(URL_MODEL.predict_proba(feats)[0][PHISH_LABEL])
-        label = "PHISHING" if score > 0.1 else "LEGIT"  # Sửa theo yêu cầu, giả sử > 0.1 là PHISHING
+        label = "PHISHING" if score < 0.1 else "LEGIT"  # Sửa theo yêu cầu, giả sử > 0.1 là PHISHING
         return label, score
     except Exception as e:
         return f"[ERROR] {e}", 0.0

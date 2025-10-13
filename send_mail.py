@@ -1,8 +1,8 @@
 import smtplib
 from email.mime.text import MIMEText
 
-msg = MIMEText("Hi, you can search whatever you want at https://www.google.com/")
-msg['Subject'] = 'Email from Google'
+msg = MIMEText("Hi, you can check your order at https://www.amazon.com/your-orders")
+msg['Subject'] = 'Email from Amazon'
 msg['From'] = 'namtranhoang134@gmail.com'
 msg['To'] = 'khanhlong024@gmail.com'
 

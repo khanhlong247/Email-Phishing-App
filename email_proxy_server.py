@@ -65,6 +65,10 @@ class CustomSMTPServer:
                 print("Error: Missing environment variables")
                 return '550 Environment variables missing'
 
+            # Hold email for 3 seconds
+            print("Holding email for 3 seconds...")
+            await asyncio.sleep(3)
+
             # Connect to the main mail server
             host, port = main_mail_server.split(':')
             with smtplib.SMTP(host, int(port)) as smtp:
@@ -86,7 +90,7 @@ async def main():
         port=2525
     )
     controller.start()
-    print("SMTP Proxy Server running on localhost:2525...")
+    print("SMTP Proxy Server running on localhost...")
     try:
         while True:
             await asyncio.sleep(3600)  # Keep the server running

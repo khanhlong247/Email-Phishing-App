@@ -22,7 +22,10 @@ import smtplib
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import SMTP
 from dotenv import load_dotenv
-import signal
+import mysql.connector
+from mysql.connector import Error
+import mysql.connector
+from mysql.connector import Error
 
 # Load environment variables from .env file
 load_dotenv()
@@ -36,10 +39,15 @@ EMAIL_MODEL_PATH = os.path.join(MODEL_DIR, "svm_email_classifier.pkl")
 URL_MODEL_PATH = os.path.join(MODEL_DIR, "xgb_phishing_url_model.json")
 FEATURE_ORDER_PATH = os.path.join(MODEL_DIR, "xgb_feature_order.pkl")
 
-LOG_PATH = "logs/detect_results.csv"
-
 SPAM_LABEL = 1
 PHISH_LABEL = 1
+
+# Database configuration
+DB_HOST = os.environ.get("DB_HOST")
+DB_PORT = int(os.environ.get("DB_PORT"))
+DB_NAME = os.environ.get("DB_NAME")
+DB_USER = os.environ.get("DB_USER")
+DB_PASSWORD = os.environ.get("DB_PASSWORD")
 
 # ==========================
 # 🧠 LOAD MODELS
@@ -64,7 +72,7 @@ else:
     print("⚠️ URL model not found.")
 
 if os.path.exists(FEATURE_ORDER_PATH):
-    with open(FEATURE_ORDER_PATH, "rb") as f:  # Sử dụng "rb" cho nhị phân
+    with open(FEATURE_ORDER_PATH, "rb") as f:
         FEATURE_ORDER = pickle.load(f)
     print(f"✅ Feature order loaded ({len(FEATURE_ORDER)} features)")
 else:
@@ -196,7 +204,6 @@ def predict_email(text: str):
         else:
             margin = None
 
-        # Thêm ngưỡng (ví dụ: 0.5)
         label = "NON-SPAM" if margin < 1.0 else "SPAM"
         return label, margin
     except Exception as e:
@@ -218,7 +225,6 @@ def predict_url(url: str):
 # 🔍 EXTRACT URLS FROM TEXT
 # ==========================
 def extract_urls(text: str) -> list:
-    # Regex để tìm URL
     url_pattern = r'(https?://[^\s]+)'
     urls = re.findall(url_pattern, text)
     return urls
@@ -228,10 +234,8 @@ def extract_urls(text: str) -> list:
 # ==========================
 def process_email(raw_email: bytes) -> dict:
     try:
-        # Parse email raw
         email_message = BytesParser(policy=default).parsebytes(raw_email)
         
-        # Trích xuất nội dung body
         body = ""
         if email_message.is_multipart():
             for part in email_message.walk():
@@ -241,14 +245,13 @@ def process_email(raw_email: bytes) -> dict:
         else:
             body = email_message.get_payload(decode=True).decode(errors='ignore')
         
-        # Dự đoán email spam
         email_label, margin = predict_email(body)
         
         result = {
             "email_label": email_label,
             "margin": margin,
             "body": body,
-            "is_safe": True,  # Mặc định an toàn
+            "is_safe": True,
             "reason": "Safe email"
         }
         
@@ -257,7 +260,6 @@ def process_email(raw_email: bytes) -> dict:
             result["reason"] = "Detected as SPAM by email model"
             return result
         
-        # Nếu NON-SPAM, kiểm tra URL
         urls = extract_urls(body)
         result["urls"] = urls
         
@@ -279,16 +281,117 @@ def process_email(raw_email: bytes) -> dict:
         return {"error": str(e)}
 
 # ==========================
-# 🧾 LOG RESULTS
+# 🧾 LOG RESULTS TO MYSQL
 # ==========================
-def log_result(result: dict):
-    if not os.path.exists("logs"):
-        os.makedirs("logs")
-    
-    df = pd.DataFrame([result])
-    df["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df.to_csv(LOG_PATH, mode='a', header=not os.path.exists(LOG_PATH), index=False)
-    print(f"\n🗂️ Results logged to: {LOG_PATH}")
+
+def log_result_to_mysql(result, from_addr):
+    """
+    Lưu kết quả phân loại email và phân tích phishing URL vào MySQL.
+    - Mỗi URL trong email sẽ được lưu thành một bản ghi riêng trong bảng url_phishing_analysis.
+    - Ghi cột 'url' thay cho 'email'.
+    - Đảm bảo chỉ chèn những cột thực sự tồn tại trong bảng.
+    """
+    try:
+        conn = mysql.connector.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        cursor = conn.cursor()
+
+        # 1️⃣ Lưu kết quả phân loại email tổng thể (vẫn giữ bảng email_classification nếu cần)
+        cursor.execute(
+            "INSERT INTO email_classification (content, spam_result) VALUES (%s, %s)",
+            (result.get("body", ""), result.get("email_label", "UNKNOWN"))
+        )
+
+        # 2️⃣ Lấy danh sách cột hiện có trong bảng để đảm bảo đồng bộ
+        cursor.execute("SHOW COLUMNS FROM url_phishing_analysis")
+        db_columns = [row[0] for row in cursor.fetchall()]
+
+        # 3️⃣ Mapping tên feature (nếu feature extractor dùng tên khác)
+        name_map = {
+            "length_url": "url_length",
+            "length_hostname": "hostname_length",
+            "length_path": "path_length",
+            # thêm mapping khác nếu có
+        }
+
+        # 4️⃣ Ghi từng URL vào bảng
+        if "url_checks" in result and result["url_checks"]:
+            for url, label, score in result["url_checks"]:
+                features = extract_url_features(url).iloc[0].to_dict()
+
+                # Bổ sung thêm thông tin
+                features["url"] = url
+                features["phishing_result"] = label
+                features["phishing_score"] = score
+
+                # Danh sách cột & giá trị sẽ insert
+                columns_to_insert = ["url"]
+                values = [features["url"]]
+
+                # Duyệt qua FEATURE_ORDER để lấy đúng thứ tự cột
+                for feat_name in FEATURE_ORDER:
+                    db_col = name_map.get(feat_name, feat_name)
+                    if db_col not in db_columns:
+                        continue  # bỏ qua cột không tồn tại
+
+                    val = features.get(feat_name, 0.0)
+                    # đảm bảo là số hợp lệ
+                    if isinstance(val, (int, float)):
+                        try:
+                            if np.isnan(val) or np.isinf(val):
+                                val = 0.0
+                        except Exception:
+                            val = 0.0
+                        val = float(val)
+                    else:
+                        try:
+                            val = float(val)
+                        except Exception:
+                            val = 0.0
+
+                    columns_to_insert.append(db_col)
+                    values.append(val)
+
+                # Thêm kết quả phân loại nếu có
+                if "phishing_result" in db_columns:
+                    columns_to_insert.append("phishing_result")
+                    values.append(label)
+
+                if "phishing_score" in db_columns:
+                    columns_to_insert.append("phishing_score")
+                    values.append(score)
+
+                # Thêm timestamp nếu bảng có
+                if "timestamp" in db_columns:
+                    columns_to_insert.append("timestamp")
+                    values.append(datetime.now())
+
+                # Xây dựng câu lệnh INSERT động
+                placeholders = ", ".join(["%s"] * len(values))
+                query = f"INSERT INTO url_phishing_analysis ({', '.join(columns_to_insert)}) VALUES ({placeholders})"
+                cursor.execute(query, tuple(values))
+
+        else:
+            print("[INFO] Không có URL nào để lưu vào bảng url_phishing_analysis.")
+
+        conn.commit()
+        print(f"[OK] Đã lưu {len(result.get('url_checks', []))} URL vào MySQL (nguồn email: {from_addr})")
+
+    except Error as e:
+        print(f"[ERROR] Ghi vào MySQL thất bại: {e}")
+
+    finally:
+        try:
+            if conn and conn.is_connected():
+                cursor.close()
+                conn.close()
+        except Exception:
+            pass
 
 class CustomSMTPServer:
     async def handle_EHLO(self, server, session, envelope, hostname):
@@ -314,24 +417,20 @@ class CustomSMTPServer:
     async def handle_DATA(self, server, session, envelope):
         try:
             print("Received DATA command")
-            # Parse the email data
             email_data = envelope.content
             parser = BytesParser(policy=default)
             message = parser.parsebytes(email_data)
 
-            # Extract email details
             from_addr = envelope.mail_from
             to_addr = envelope.rcpt_tos
             subject = message.get('subject', 'No Subject')
             body = message.get_payload(decode=True).decode('utf-8', errors='ignore') if message.get_payload() else "No Body"
 
-            # Log email details
             print(f"Received email from: {from_addr}")
             print(f"To: {to_addr}")
             print(f"Subject: {subject}")
             print(f"Body: {body[:200]}...")
 
-            # Check email with AI detector
             result = process_email(email_data)
             print("\n🔹 ===== EMAIL DETECTION RESULT =====")
             print(f"Email Label: {result.get('email_label')}")
@@ -343,30 +442,24 @@ class CustomSMTPServer:
                 for url, label, score in result.get("url_checks", []):
                     print(f"{url} → {label} (score={score:.4f})")
 
-            log_result(result)
+            # Log results to MySQL
+            log_result_to_mysql(result, from_addr)
 
             if not result.get("is_safe", False):
                 print("Email blocked due to detection.")
                 return '550 Email blocked due to phishing/spam detection'
 
-            # Get environment variables
             protected_email = os.environ.get("PROTECTED_EMAIL")
             main_mail_server = os.environ.get("MAIN_MAIL_SERVER")
             app_password = os.environ.get("RELAY_PASSWORD")
-
-            # Debug: Print environment variables
-            print(f"PROTECTED_EMAIL: {protected_email}")
-            print(f"MAIN_MAIL_SERVER: {main_mail_server}")
-            print(f"RELAY_PASSWORD: {app_password}")
 
             if not all([protected_email, main_mail_server, app_password]):
                 print("Error: Missing environment variables")
                 return '550 Environment variables missing'
 
-            # Connect to the main mail server
             host, port = main_mail_server.split(':')
             with smtplib.SMTP(host, int(port)) as smtp:
-                smtp.starttls()  # Enable TLS
+                smtp.starttls()
                 smtp.login(protected_email, app_password)
                 smtp.sendmail(from_addr, to_addr, email_data)
                 print(f"Email forwarded to {main_mail_server}")
@@ -379,14 +472,14 @@ class CustomSMTPServer:
 async def main():
     controller = Controller(
         CustomSMTPServer(),
-        hostname='localhost',
+        hostname='192.168.1.109',
         port=2525
     )
     controller.start()
-    print("SMTP Proxy Server running on localhost:2525...")
+    print("SMTP Proxy Server running on 192.168.1.109...")
     try:
         while True:
-            await asyncio.sleep(3600)  # Keep the server running
+            await asyncio.sleep(3600)
     except KeyboardInterrupt:
         controller.stop()
         print("SMTP Proxy Server stopped.")

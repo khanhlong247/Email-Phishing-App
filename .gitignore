@@ -2,7 +2,6 @@
 /models
 /logs
 /smtp_gateway.log
-/test_gmail.com
 __pycache__/
 *.pyc
 /create_database.py

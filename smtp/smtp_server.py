@@ -29,12 +29,10 @@ class CustomSMTPServer:
             # Ghi log vào MySQL
             self.logger.log(result, from_addr)
 
-            # ⚠️ Nếu email bị đánh dấu SPAM, KHÔNG gửi đi nhưng trả về OK để N8N không lỗi
             if not result.get("is_safe", False):
                 print("[INFO] Email identified as SPAM — suppressed forwarding.")
                 return '250 OK (SPAM detected and suppressed)'
 
-            # ✅ Nếu email an toàn, forward đến mail đích
             host, port = MAIN_MAIL_SERVER.split(':')
             with smtplib.SMTP(host, int(port)) as smtp:
                 smtp.starttls()

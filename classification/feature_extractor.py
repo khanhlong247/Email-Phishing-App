@@ -24,7 +24,7 @@ def extract_url_features(url: str) -> pd.DataFrame:
         # Đặc trưng cơ bản đã có
         feats["url_length"] = len(url)
         feats["hostname_length"] = len(host)
-        feats["path_length"] = len(path)  # Thêm tạm vì không có trong danh sách gốc
+        feats["path_length"] = len(path)
         feats["nb_dots"] = url.count(".")
         feats["nb_hyphens"] = url.count("-")
         feats["nb_at"] = url.count("@")

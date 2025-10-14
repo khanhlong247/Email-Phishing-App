@@ -8,7 +8,8 @@ requests
 beautifulsoup4
 whois
 pandas
-xgboost==1.6.2
+xgboost
 ipaddress
 tldextract
 mysql-connector-python
+PyQt5

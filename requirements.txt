@@ -12,3 +12,4 @@ xgboost
 ipaddress
 tldextract
 mysql-connector-python
+PyQt5

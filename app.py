@@ -1,14 +1,10 @@
-import asyncio
-from smtp.smtp_server import start_smtp_server
-
-async def main():
-    controller = start_smtp_server()
-    try:
-        while True:
-            await asyncio.sleep(3600)
-    except KeyboardInterrupt:
-        controller.stop()
-        print("SMTP Proxy Server stopped.")
+# app.py
+import sys
+from PyQt5.QtWidgets import QApplication
+from ui import MainWindow
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())

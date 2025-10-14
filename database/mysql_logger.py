@@ -23,17 +23,17 @@ class MySQLLogger:
         try:
             cursor = self.connect()
 
-            # 1️⃣ Lưu email classification
+            # Lưu email classification
             cursor.execute(
                 "INSERT INTO email_classification (content, spam_result) VALUES (%s, %s)",
                 (result.get("body", ""), result.get("email_label", "UNKNOWN"))
             )
 
-            # 2️⃣ Lấy danh sách cột hiện có
+            # Lấy danh sách cột hiện có
             cursor.execute("SHOW COLUMNS FROM url_phishing_analysis")
             db_columns = [r[0] for r in cursor.fetchall()]
 
-            # 3️⃣ Lưu từng URL
+            # Lưu từng URL
             if "url_checks" in result and result["url_checks"]:
                 for url, label, score in result["url_checks"]:
                     features = extract_url_features(url).iloc[0].to_dict()

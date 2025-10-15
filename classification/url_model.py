@@ -2,6 +2,9 @@ import xgboost as xgb
 import numpy as np
 from .feature_extractor import extract_url_features
 from config import PHISH_LABEL
+import warnings
+
+warnings.filterwarnings("ignore")
 
 class URLClassifier:
     def __init__(self, model_path):

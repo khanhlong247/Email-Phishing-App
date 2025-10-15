@@ -1,5 +1,12 @@
 import joblib
 import numpy as np
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message="Trying to unpickle estimator")
 
 class EmailClassifier:
     def __init__(self, model_path):

@@ -52,6 +52,8 @@ EmailChecker/
 2. Mở thư mục `dist/`.
 3. Chạy file: EmailChecker.exe
 
+### Liên hệ "khanhlong024@gmail.com" để lấy các folder models, disk, build và file .env
+
 ## 📄 Giấy phép & Bản quyền
 
 ### © 2025 EmailChecker Project

@@ -56,6 +56,8 @@ MYSQL_DB=emailchecker
 
 ---
 
+#### Liên hệ "khanhlong024@gmail.com" để lấy các folder models, disk, build và file .env
+
 ### 3️⃣ Khởi chạy server
 
 Chạy các lệnh sau trong terminal (tại thư mục gốc dự án):
@@ -169,4 +171,5 @@ in the Software without restriction...
 > 💬 *EmailChecker Server là thành phần trung tâm của hệ thống giám sát email thời gian thực.  
 > Dự án được phát triển nhằm nâng cao bảo mật và phát hiện sớm các cuộc tấn công phishing.  
 > Nếu bạn sử dụng hoặc mở rộng mã nguồn, vui lòng ghi nhận nhóm tác giả trong phần “About” hoặc tài liệu dự án.*
+
 

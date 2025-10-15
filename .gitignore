@@ -10,5 +10,6 @@ __pycache__/
 /send_mail.py
 /test_all_models.py
 /main.py
-/disk
+/dist
 /build
+/EmailChecker.spec

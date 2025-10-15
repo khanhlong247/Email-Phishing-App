@@ -1,4 +1,4 @@
-# app.py (cho desktop app, GUI-only với WebSocket client)
+# app.py
 import sys
 from PyQt5.QtWidgets import QApplication
 from ui import MainWindow

@@ -1,13 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-UI Desktop App - SMTP WebSocket Client
-Tác giả: khanhlong
-Đã chỉnh sửa để:
-- Hiển thị trạng thái kết nối chính xác
-- Hiển thị đầy đủ log server gửi về
-- Bỏ treo do thiếu thông báo 'Connected'
-"""
-
 import sys
 import os
 import asyncio
@@ -20,20 +10,13 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
 
-# ==============================
-# 🔧 Hàm hỗ trợ load resource (icon, ảnh...) tương thích cả khi chạy .exe
-# ==============================
 def resource_path(relative_path):
-    """Trả về đường dẫn tuyệt đối đến file resource, tương thích cả khi chạy .py hoặc .exe"""
     try:
         base_path = sys._MEIPASS
     except AttributeError:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-# ==========================================================
-# Thread chạy WebSocket Client (tách biệt với UI Thread)
-# ==========================================================
 class WebSocketThread(QThread):
     new_data = pyqtSignal(str)
 
@@ -51,23 +34,18 @@ class WebSocketThread(QThread):
         async def connect_and_listen():
             ws = None
             try:
-                # Kết nối tới server WebSocket
                 ws = await websockets.connect(uri)
-                # Báo về UI khi kết nối thành công
                 self.new_data.emit(f"Connected to {uri}")
 
-                # Gửi tín hiệu "connect" nếu cần
                 try:
                     await ws.send("connect")
                 except Exception:
                     pass
 
-                # Vòng lặp nhận dữ liệu liên tục
                 while self.running:
                     try:
                         data = await asyncio.wait_for(ws.recv(), timeout=30.0)
                     except asyncio.TimeoutError:
-                        # Giữ kết nối sống
                         continue
                     if data is None:
                         break
@@ -76,7 +54,6 @@ class WebSocketThread(QThread):
             except Exception as e:
                 self.new_data.emit(f"Error: {str(e)}")
             finally:
-                # Đóng WebSocket sạch sẽ
                 try:
                     if ws is not None and not ws.closed:
                         await ws.close()
@@ -95,10 +72,6 @@ class WebSocketThread(QThread):
     def stop(self):
         self.running = False
 
-
-# ==========================================================
-# Giao diện chính của ứng dụng
-# ==========================================================
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -152,16 +125,12 @@ class MainWindow(QMainWindow):
         # WebSocket thread
         self.ws_thread = None
 
-    # ======================================================
-    # Kết nối server
-    # ======================================================
     def connect_server(self):
         if self.ws_thread and self.ws_thread.running:
             self.append_log("Đã kết nối.")
             return
 
-        # Địa chỉ server (sửa nếu cần)
-        host = "3.27.171.246"   # EC2 public IP
+        host = "3.27.171.246" 
         port = 8765
 
         self.ws_thread = WebSocketThread(host, port)
@@ -172,9 +141,6 @@ class MainWindow(QMainWindow):
         self.connect_btn.setEnabled(False)
         self.disconnect_btn.setEnabled(True)
 
-    # ======================================================
-    # Ngắt kết nối
-    # ======================================================
     def disconnect_server(self):
         if self.ws_thread:
             self.ws_thread.stop()
@@ -183,13 +149,9 @@ class MainWindow(QMainWindow):
         self.connect_btn.setEnabled(True)
         self.disconnect_btn.setEnabled(False)
 
-    # ======================================================
-    # Hiển thị log ra UI
-    # ======================================================
     def append_log(self, text):
         text = text.strip()
 
-        # Thử parse JSON nếu server gửi dạng JSON
         try:
             if text.startswith("{") and text.endswith("}"):
                 obj = json.loads(text)
@@ -201,7 +163,6 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # Cập nhật trạng thái nếu có từ khóa
         if "Connected to" in text:
             self.status_label.setText("Trạng thái server: Kết nối")
             self.process_log.append(text)
@@ -209,17 +170,11 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Trạng thái server: Ngắt kết nối")
             self.process_log.append(text)
         else:
-            # Hiển thị tất cả log khác
             self.process_log.append(text)
 
-        # Nếu log chứa nội dung email hoặc body
         if "Subject:" in text or "From:" in text or "To:" in text or "Body:" in text:
             self.email_log.append(text)
 
-
-# ==========================================================
-# Chạy ứng dụng
-# ==========================================================
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()

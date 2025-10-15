@@ -47,7 +47,7 @@ class CustomSMTPServer:
 
 
 def start_smtp_server():
-    controller = Controller(CustomSMTPServer(), hostname='192.168.1.216', port=2525)
+    controller = Controller(CustomSMTPServer(), hostname='10.60.136.8', port=2525)
     controller.start()
-    print("SMTP Proxy Server running on 192.168.1.216:2525...")
+    print("SMTP Proxy Server running on 10.60.136.8:2525...")
     return controller

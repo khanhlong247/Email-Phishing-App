@@ -1,189 +1,227 @@
+# -*- coding: utf-8 -*-
+"""
+UI Desktop App - SMTP WebSocket Client
+Tác giả: khanhlong
+Đã chỉnh sửa để:
+- Hiển thị trạng thái kết nối chính xác
+- Hiển thị đầy đủ log server gửi về
+- Bỏ treo do thiếu thông báo 'Connected'
+"""
+
 import sys
+import os
 import asyncio
-from email.parser import BytesParser
-from email.policy import default
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QVBoxLayout, QWidget, QPushButton, QHBoxLayout, QLabel
-from PyQt5.QtCore import QThread, pyqtSignal, QObject
-import io
-from aiosmtpd.controller import Controller
-import types
+import json
+import websockets
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel,
+    QPushButton, QTextEdit, QHBoxLayout, QSizePolicy
+)
+from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtGui import QIcon
 
-class LogEmitter(QObject):
-    new_log = pyqtSignal(str)
-    new_email = pyqtSignal(dict)
+# ==============================
+# 🔧 Hàm hỗ trợ load resource (icon, ảnh...) tương thích cả khi chạy .exe
+# ==============================
+def resource_path(relative_path):
+    """Trả về đường dẫn tuyệt đối đến file resource, tương thích cả khi chạy .py hoặc .exe"""
+    try:
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
-class LogRedirector(io.StringIO):
-    def __init__(self, emitter):
-        super().__init__()
-        self.emitter = emitter
+# ==========================================================
+# Thread chạy WebSocket Client (tách biệt với UI Thread)
+# ==========================================================
+class WebSocketThread(QThread):
+    new_data = pyqtSignal(str)
 
-    def write(self, s):
-        super().write(s)
-        if s.strip():
-            self.emitter.new_log.emit(s)
-
-class ServerThread(QThread):
-    server_started = pyqtSignal(str, int)
-    new_email_processed = pyqtSignal(dict)
-
-    def __init__(self, parent=None):
+    def __init__(self, host, port, parent=None):
         super().__init__(parent)
-        self.controller = None
-        self.hostname = None
-        self.port = None
-        self.loop = None
-        self.custom_server = None
+        self.host = host
+        self.port = port
+        self.websocket = None
+        self.running = False
 
     def run(self):
-        from smtp.smtp_server import CustomSMTPServer
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        self.custom_server = CustomSMTPServer()
+        self.running = True
+        uri = f"ws://{self.host}:{self.port}"
 
-        # Monkey patch handle_DATA để thêm emit, fix TypeError
-        original_handle_DATA = self.custom_server.handle_DATA.__func__  # Lấy hàm gốc không bound
-        async def patched_handle_DATA(self_custom, server, session, envelope):
-            # Bind original_handle_DATA với self_custom trước khi gọi
-            bound_original = types.MethodType(original_handle_DATA, self_custom)
-            result = await bound_original(server, session, envelope)
-            email_message = BytesParser(policy=default).parsebytes(envelope.content)
-            email_data = {
-                "From": envelope.mail_from if envelope.mail_from else "Unknown",
-                "To": envelope.rcpt_tos[0] if envelope.rcpt_tos else "Unknown",
-                "Subject": email_message["Subject"] if email_message["Subject"] else "No Subject",
-                "Body": ""
-            }
-            if email_message.is_multipart():
-                for part in email_message.walk():
-                    if part.get_content_type() == 'text/plain':
-                        email_data["Body"] = part.get_payload(decode=True).decode(errors='ignore')
+        async def connect_and_listen():
+            ws = None
+            try:
+                # Kết nối tới server WebSocket
+                ws = await websockets.connect(uri)
+                # Báo về UI khi kết nối thành công
+                self.new_data.emit(f"Connected to {uri}")
+
+                # Gửi tín hiệu "connect" nếu cần
+                try:
+                    await ws.send("connect")
+                except Exception:
+                    pass
+
+                # Vòng lặp nhận dữ liệu liên tục
+                while self.running:
+                    try:
+                        data = await asyncio.wait_for(ws.recv(), timeout=30.0)
+                    except asyncio.TimeoutError:
+                        # Giữ kết nối sống
+                        continue
+                    if data is None:
                         break
-            else:
-                email_data["Body"] = email_message.get_payload(decode=True).decode(errors='ignore') if email_message.get_payload() else ""
-            self.new_email_processed.emit(email_data)
-            return result
+                    self.new_data.emit(data)
 
-        self.custom_server.handle_DATA = types.MethodType(patched_handle_DATA, self.custom_server)
+            except Exception as e:
+                self.new_data.emit(f"Error: {str(e)}")
+            finally:
+                # Đóng WebSocket sạch sẽ
+                try:
+                    if ws is not None and not ws.closed:
+                        await ws.close()
+                except Exception:
+                    pass
+                self.new_data.emit("Disconnected")
+                self.running = False
 
-        self.controller = Controller(self.custom_server, hostname='192.168.1.216', port=2525)
-        self.controller.start()
-        self.hostname = self.controller.hostname
-        self.port = self.controller.port
-        self.server_started.emit(self.hostname, self.port)
         try:
-            self.loop.run_forever()
+            asyncio.run(connect_and_listen())
+        except Exception as e:
+            self.new_data.emit(f"Error: {str(e)}")
         finally:
-            self.controller.stop()
+            self.running = False
 
+    def stop(self):
+        self.running = False
+
+
+# ==========================================================
+# Giao diện chính của ứng dụng
+# ==========================================================
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Email Checker Desktop App")
-        self.setGeometry(100, 100, 800, 600)
+        self.setWindowTitle("SMTP WebSocket Client")
+        self.setGeometry(100, 100, 1200, 700)
+        
+        self.setWindowIcon(QIcon(resource_path('logo.png')))
 
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
+        # Giao diện chính
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        layout = QVBoxLayout()
+        central_widget.setLayout(layout)
 
-        main_layout = QVBoxLayout(self.central_widget)
+        # Trạng thái server
+        self.status_label = QLabel("Trạng thái server: Chưa kết nối")
+        self.status_label.setStyleSheet("font-weight: bold; color: blue;")
+        layout.addWidget(self.status_label)
 
-        self.status_label = QLabel("Trạng thái server: Chờ")
-        main_layout.addWidget(self.status_label)
+        # Nút điều khiển
+        btn_layout = QHBoxLayout()
+        layout.addLayout(btn_layout)
 
-        content_layout = QHBoxLayout()
+        self.connect_btn = QPushButton("Kết nối tới AWS")
+        self.connect_btn.clicked.connect(self.connect_server)
+        btn_layout.addWidget(self.connect_btn)
 
-        left_column = QVBoxLayout()
-        left_label = QLabel("Nội dung email tới")
-        left_column.addWidget(left_label)
-        self.email_content = QTextEdit()
-        self.email_content.setReadOnly(True)
-        left_column.addWidget(self.email_content)
-        content_layout.addLayout(left_column)
+        self.disconnect_btn = QPushButton("Ngắt kết nối")
+        self.disconnect_btn.clicked.connect(self.disconnect_server)
+        self.disconnect_btn.setEnabled(False)
+        btn_layout.addWidget(self.disconnect_btn)
 
-        right_column = QVBoxLayout()
-        right_label = QLabel("Quá trình lọc mail")
-        right_column.addWidget(right_label)
+        # Hai khung log: email content và process log
+        log_layout = QHBoxLayout()
+        layout.addLayout(log_layout)
+
+        # Khung hiển thị nội dung email
+        self.email_log = QTextEdit()
+        self.email_log.setReadOnly(True)
+        self.email_log.setPlaceholderText("Nội dung email tới...")
+        self.email_log.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        log_layout.addWidget(self.email_log)
+
+        # Khung hiển thị quá trình xử lý
         self.process_log = QTextEdit()
         self.process_log.setReadOnly(True)
-        right_column.addWidget(self.process_log)
-        content_layout.addLayout(right_column)
+        self.process_log.setPlaceholderText("Quá trình lọc mail...")
+        self.process_log.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        log_layout.addWidget(self.process_log)
 
-        main_layout.addLayout(content_layout)
+        # WebSocket thread
+        self.ws_thread = None
 
-        button_layout = QHBoxLayout()
+    # ======================================================
+    # Kết nối server
+    # ======================================================
+    def connect_server(self):
+        if self.ws_thread and self.ws_thread.running:
+            self.append_log("Đã kết nối.")
+            return
 
-        self.start_button = QPushButton("Start Server")
-        self.start_button.clicked.connect(self.start_server)
-        button_layout.addWidget(self.start_button)
+        # Địa chỉ server (sửa nếu cần)
+        host = "3.27.171.246"   # EC2 public IP
+        port = 8765
 
-        self.stop_button = QPushButton("Stop Server")
-        self.stop_button.clicked.connect(self.stop_server)
-        self.stop_button.setEnabled(False)
-        button_layout.addWidget(self.stop_button)
+        self.ws_thread = WebSocketThread(host, port)
+        self.ws_thread.new_data.connect(self.append_log)
+        self.ws_thread.start()
 
-        main_layout.addLayout(button_layout)
+        self.status_label.setText("Trạng thái server: Đang kết nối...")
+        self.connect_btn.setEnabled(False)
+        self.disconnect_btn.setEnabled(True)
 
-        self.emitter = LogEmitter()
-        self.emitter.new_log.connect(self.append_log)
-        self.emitter.new_email.connect(self.update_email_content)
+    # ======================================================
+    # Ngắt kết nối
+    # ======================================================
+    def disconnect_server(self):
+        if self.ws_thread:
+            self.ws_thread.stop()
+            self.ws_thread.wait()
+        self.status_label.setText("Trạng thái server: Ngắt kết nối")
+        self.connect_btn.setEnabled(True)
+        self.disconnect_btn.setEnabled(False)
 
-        self.redirector = LogRedirector(self.emitter)
-        self.original_stdout = sys.stdout
-        sys.stdout = self.redirector
-
-        self.server_thread = None
-
-        self.start_server()
-
+    # ======================================================
+    # Hiển thị log ra UI
+    # ======================================================
     def append_log(self, text):
-        if "SMTP Server is being initialized" in text:
-            self.status_label.setText("Trạng thái server: Chờ")
-            self.email_content.clear()
-            self.process_log.clear()
+        text = text.strip()
+
+        # Thử parse JSON nếu server gửi dạng JSON
+        try:
+            if text.startswith("{") and text.endswith("}"):
+                obj = json.loads(text)
+                pretty = json.dumps(obj, indent=2, ensure_ascii=False)
+                self.process_log.append(pretty)
+                if obj.get("status") == "connected":
+                    self.status_label.setText("Trạng thái server: Kết nối")
+                return
+        except Exception:
+            pass
+
+        # Cập nhật trạng thái nếu có từ khóa
+        if "Connected to" in text:
+            self.status_label.setText("Trạng thái server: Kết nối")
             self.process_log.append(text)
-        elif "SMTP Proxy Server running on" in text:
-            self.status_label.setText("Trạng thái server: Bật")
-            self.process_log.append(text)
-        elif "SMTP Proxy Server stopped" in text:
-            self.status_label.setText("Trạng thái server: Tắt")
-            self.process_log.append(text)
-        elif "=== EMAIL RESULT ===" in text:
-            self.process_log.append(text)
-        elif any(keyword in text for keyword in ["Label:", "https://", "OK", "Email forwarded"]):
+        elif text.startswith("Disconnected") or text.startswith("Error"):
+            self.status_label.setText("Trạng thái server: Ngắt kết nối")
             self.process_log.append(text)
         else:
+            # Hiển thị tất cả log khác
             self.process_log.append(text)
 
-    def update_email_content(self, email_data):
-        content = f"From: {email_data['From']}\nTo: {email_data['To']}\nSubject: {email_data['Subject']}\nBody: {email_data['Body']}"
-        self.email_content.setText(content)
+        # Nếu log chứa nội dung email hoặc body
+        if "Subject:" in text or "From:" in text or "To:" in text or "Body:" in text:
+            self.email_log.append(text)
 
-    def start_server(self):
-        if not self.server_thread or not self.server_thread.isRunning():
-            self.server_thread = ServerThread(self)
-            self.server_thread.server_started.connect(self.on_server_started)
-            self.server_thread.new_email_processed.connect(self.emitter.new_email)
-            self.server_thread.start()
-            self.start_button.setEnabled(False)
-            self.stop_button.setEnabled(True)
-            self.append_log("SMTP Server is being initialized")
 
-    def on_server_started(self, hostname, port):
-        self.append_log(f"SMTP Proxy Server running on {hostname}:{port}...")
-
-    def stop_server(self):
-        if self.server_thread and self.server_thread.isRunning():
-            if self.server_thread.loop:
-                self.server_thread.loop.call_soon_threadsafe(self.server_thread.loop.stop)
-            self.server_thread.quit()
-            if self.server_thread.wait(5000):
-                self.append_log("SMTP Proxy Server stopped.")
-            else:
-                self.append_log("Timeout while stopping SMTP Proxy Server.")
-            self.start_button.setEnabled(True)
-            self.stop_button.setEnabled(False)
-
-    def closeEvent(self, event):
-        sys.stdout = self.original_stdout
-        if self.server_thread and self.server_thread.isRunning():
-            self.stop_server()
-        event.accept()
+# ==========================================================
+# Chạy ứng dụng
+# ==========================================================
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())
